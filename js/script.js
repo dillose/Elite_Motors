@@ -38,64 +38,123 @@ if (menuToggle && navigation) {
 // ДОПОЛНЕНИЯ — подключать ПОСЛЕ script.js
 // =========================================
 
+
 // ---------- ПОИСК ПО УСЛУГАМ ----------
 (function () {
     const input = document.getElementById("service-search");
-    const list = document.getElementById("service-list") || document.querySelector(".service-cards");
-    if (!input || !list) return;
-
+    const list = document.getElementById("service-list");
     const clearBtn = document.getElementById("service-search-clear");
     const status = document.getElementById("service-search-status");
     const empty = document.getElementById("service-empty");
-    const cards = [...list.querySelectorAll(".service-card")];
 
-    // ё = е, регистр не важен
-    const norm = s => s.toLowerCase().replace(/ё/g, "е").trim();
+    if (!input || !list) return;
 
-    // Совпадение по началу слов запроса (находит «масл» → «масла»)
-    const matches = (text, words) => words.every(w => text.includes(w));
+    const cards = Array.from(list.querySelectorAll(".service-card"));
+
+    // Нормализация текста: регистр не важен, ё = е
+    const normalize = text =>
+        text.toLocaleLowerCase("ru-RU")
+            .replace(/ё/g, "е")
+            .trim();
 
     function runSearch() {
-        const query = norm(input.value);
+        const query = normalize(input.value);
         const words = query.split(/\s+/).filter(Boolean);
-        clearBtn.hidden = !query;
 
-        let found = 0;
-                cards.forEach(card => {
-            if (card.dataset.group === undefined) card.dataset.group = card.getAttribute("name") || "";
-            if (words.length) card.removeAttribute("name");
-            else if (card.dataset.group) card.setAttribute("name", card.dataset.group);
+        let totalFound = 0;
+        let visibleCards = 0;
 
-            const items = [...card.querySelectorAll("li")];
+        if (clearBtn) {
+            clearBtn.hidden = !query;
+        }
 
-            items.forEach(li => {
-                li.classList.remove("is-match", "is-hidden");
-                if (!words.length) return;
-                const ok = matches(norm(li.textContent) + " " + title, words);
-                li.classList.toggle("is-match", ok && matches(norm(li.textContent), words));
-                if (ok) cardHits++;
+        cards.forEach(card => {
+            const titleElement = card.querySelector(".service-card-title");
+            const title = normalize(titleElement?.textContent || "");
+
+            const items = Array.from(card.querySelectorAll("li"));
+
+            // Совпадение по названию категории
+            const titleMatch = words.length > 0 &&
+                words.every(word => title.includes(word));
+
+            let cardFound = 0;
+
+            items.forEach(item => {
+                const text = normalize(item.textContent);
+
+                const itemMatch = words.length > 0 &&
+                    words.every(word =>
+                        text.includes(word) || titleMatch
+                    );
+
+                item.classList.toggle("is-match", itemMatch);
+                item.classList.toggle("is-hidden", words.length > 0 && !itemMatch);
+
+                if (itemMatch) cardFound++;
             });
 
-            if (!words.length) { card.hidden = false; return; }
+            if (!words.length) {
+                card.hidden = false;
+                card.open = false;
 
-            // Если совпало название категории — показываем её целиком
-            const titleHit = matches(title, words);
-            const visible = cardHits > 0 || titleHit;
-            card.hidden = !visible;
-            if (visible) {
+                items.forEach(item => {
+                    item.classList.remove("is-match", "is-hidden");
+                });
+
+                return;
+            }
+
+            const isVisible = titleMatch || cardFound > 0;
+
+            card.hidden = !isVisible;
+
+            if (isVisible) {
+                visibleCards++;
                 card.open = true;
-                found += titleHit && !cardHits ? items.length : items.filter(l => l.classList.contains("is-match")).length || cardHits;
+
+                if (titleMatch) {
+                    totalFound += items.length;
+                } else {
+                    totalFound += cardFound;
+                }
+
+                // Если совпало название категории,
+                // показываем все услуги этой категории
+                if (titleMatch) {
+                    items.forEach(item => {
+                        item.classList.remove("is-hidden");
+                        item.classList.add("is-match");
+                    });
+                }
+            } else {
+                card.open = false;
             }
         });
 
-        empty.hidden = !(words.length && cards.every(c => c.hidden));
-        status.textContent = !words.length ? "" :
-            cards.every(c => c.hidden) ? "Ничего не найдено" : "Найдено услуг: " + found;
-        if (!words.length) cards.forEach(c => (c.open = false));
+        if (empty) {
+            empty.hidden = !(words.length && visibleCards === 0);
+        }
+
+        if (status) {
+            status.textContent = !words.length
+                ? ""
+                : visibleCards === 0
+                    ? "Ничего не найдено"
+                    : "Найдено услуг: " + totalFound;
+        }
     }
 
     input.addEventListener("input", runSearch);
-    clearBtn.addEventListener("click", () => { input.value = ""; runSearch(); input.focus(); });
+
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            input.value = "";
+            runSearch();
+            input.focus();
+        });
+    }
+
 })();
 
 
